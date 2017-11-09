@@ -27,6 +27,7 @@ from timesketch.api.v1.resources import AggregationResource
 from timesketch.api.v1.resources import ExploreResource
 from timesketch.api.v1.resources import EventResource
 from timesketch.api.v1.resources import EventAnnotationResource
+from timesketch.api.v1.resources import GraphResource
 from timesketch.api.v1.resources import SketchResource
 from timesketch.api.v1.resources import SketchListResource
 from timesketch.api.v1.resources import ViewResource
@@ -39,15 +40,23 @@ from timesketch.api.v1.resources import StoryListResource
 from timesketch.api.v1.resources import StoryResource
 from timesketch.api.v1.resources import QueryResource
 from timesketch.api.v1.resources import CountEventsResource
+from timesketch.api.v1.resources import TimelineResource
+from timesketch.api.v1.resources import TimelineListResource
+from timesketch.api.v1.resources import SearchIndexListResource
+from timesketch.api.v1.resources import SearchIndexResource
+from timesketch.api.experimental.resources import WinLoginsResource
+from timesketch.api.experimental.resources import WinServicesResource
+from timesketch.api.experimental.resources import CreateGraphResource
+from timesketch.api.experimental.resources import DeleteGraphResource
 from timesketch.lib.errors import ApiHTTPError
 from timesketch.models import configure_engine
 from timesketch.models import init_db
 from timesketch.models.sketch import Sketch
 from timesketch.models.user import User
-from timesketch.ui.views.home import home_views
-from timesketch.ui.views.sketch import sketch_views
-from timesketch.ui.views.story import story_views
-from timesketch.ui.views.user import user_views
+from timesketch.views.home import home_views
+from timesketch.views.sketch import sketch_views
+from timesketch.views.story import story_views
+from timesketch.views.user import user_views
 
 
 def create_app(config=None):
@@ -61,8 +70,7 @@ def create_app(config=None):
         Application object (instance of flask.Flask).
     """
     # Setup the Flask app and load the config.
-    app = Flask(
-        __name__, template_folder=u'ui/templates', static_folder=u'ui/static')
+    app = Flask(__name__, template_folder=u'templates', static_folder=u'static')
 
     if not config:
         config = u'/etc/timesketch.conf'
@@ -86,6 +94,15 @@ def create_app(config=None):
                          u'$ openssl rand -base64 32\n\n')
         sys.exit()
 
+    # Plaso version that we support
+    if app.config[u'UPLOAD_ENABLED']:
+        try:
+            from plaso import __version__ as plaso_version
+        except ImportError:
+            sys.stderr.write(u'Upload is enabled, but Plaso is not installed.')
+            sys.exit()
+        app.config[u'PLASO_VERSION'] = plaso_version
+
     # Setup the database.
     configure_engine(app.config[u'SQLALCHEMY_DATABASE_URI'])
     db = init_db()
@@ -107,28 +124,49 @@ def create_app(config=None):
     api_v1 = Api(app, prefix=u'/api/v1')
     api_v1.add_resource(SketchListResource, u'/sketches/')
     api_v1.add_resource(SketchResource, u'/sketches/<int:sketch_id>/')
-    api_v1.add_resource(
-        AggregationResource, u'/sketches/<int:sketch_id>/aggregation/')
+    api_v1.add_resource(AggregationResource,
+                        u'/sketches/<int:sketch_id>/aggregation/')
     api_v1.add_resource(ExploreResource, u'/sketches/<int:sketch_id>/explore/')
     api_v1.add_resource(EventResource, u'/sketches/<int:sketch_id>/event/')
-    api_v1.add_resource(
-        EventAnnotationResource, u'/sketches/<int:sketch_id>/event/annotate/')
+    api_v1.add_resource(EventAnnotationResource,
+                        u'/sketches/<int:sketch_id>/event/annotate/')
     api_v1.add_resource(ViewListResource, u'/sketches/<int:sketch_id>/views/')
-    api_v1.add_resource(
-        ViewResource, u'/sketches/<int:sketch_id>/views/<int:view_id>/')
+    api_v1.add_resource(ViewResource,
+                        u'/sketches/<int:sketch_id>/views/<int:view_id>/')
     api_v1.add_resource(SearchTemplateListResource, u'/searchtemplate/')
-    api_v1.add_resource(
-        SearchTemplateResource, u'/searchtemplate/<int:searchtemplate_id>/')
+    api_v1.add_resource(SearchTemplateResource,
+                        u'/searchtemplate/<int:searchtemplate_id>/')
     api_v1.add_resource(UploadFileResource, u'/upload/')
     api_v1.add_resource(TaskResource, u'/tasks/')
+    api_v1.add_resource(StoryListResource,
+                        u'/sketches/<int:sketch_id>/stories/')
+    api_v1.add_resource(StoryResource,
+                        u'/sketches/<int:sketch_id>/stories/<int:story_id>/')
+    api_v1.add_resource(QueryResource,
+                        u'/sketches/<int:sketch_id>/explore/query/')
+    api_v1.add_resource(CountEventsResource,
+                        u'/sketches/<int:sketch_id>/count/')
+    api_v1.add_resource(TimelineListResource,
+                        u'/sketches/<int:sketch_id>/timelines/')
     api_v1.add_resource(
-        StoryListResource, u'/sketches/<int:sketch_id>/stories/')
-    api_v1.add_resource(
-        StoryResource, u'/sketches/<int:sketch_id>/stories/<int:story_id>/')
-    api_v1.add_resource(
-        QueryResource, u'/sketches/<int:sketch_id>/explore/query/')
-    api_v1.add_resource(
-        CountEventsResource, u'/sketches/<int:sketch_id>/count/')
+        TimelineResource,
+        u'/sketches/<int:sketch_id>/timelines/<int:timeline_id>/')
+    api_v1.add_resource(SearchIndexListResource, u'/searchindices/')
+    api_v1.add_resource(SearchIndexResource,
+                        u'/searchindices/<int:searchindex_id>/')
+    api_v1.add_resource(GraphResource,
+                        u'/sketches/<int:sketch_id>/explore/graph/')
+
+    # Experimental API resources
+    api_experimental = Api(app, prefix=u'/api/experimental')
+    api_experimental.add_resource(WinLoginsResource,
+                                  u'/sketches/<int:sketch_id>/win_logins/')
+    api_experimental.add_resource(WinServicesResource,
+                                  u'/sketches/<int:sketch_id>/win_services/')
+    api_experimental.add_resource(CreateGraphResource,
+                                  u'/sketches/<int:sketch_id>/create_graph/')
+    api_experimental.add_resource(DeleteGraphResource,
+                                  u'/sketches/<int:sketch_id>/delete_graph/')
 
     # Register error handlers
     # pylint: disable=unused-variable
